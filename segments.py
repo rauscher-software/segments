@@ -17,7 +17,14 @@ def rgb_to_hex(color):
 
 # rgb array to hex array
 def convert_array_to_hex(rgb_array):
-    return [[rgb_to_hex(pixel) for pixel in row] for row in rgb_array]
+    return [
+        [
+            rgb_to_hex(pixel[:3]) if pixel[3] > 0 else None  # ignore transparent pixels
+            for pixel in row
+        ]
+        for row in rgb_array
+    ]
+
 
 # find closest matching ACI color (according to aci_table.py)
 def find_closest_aci(hex_color):
@@ -30,7 +37,7 @@ def find_closest_aci(hex_color):
 
 # create rgb color array from image
 def create_color_array(input_path):
-    img = Image.open(input_path).convert("RGB")
+    img = Image.open(input_path).convert("RGBA")
     width, height = img.size
     return [[img.getpixel((x, y)) for x in range(width)] for y in range(height)]
 
@@ -55,7 +62,7 @@ def find_connected_regions(color_array):
 
     for y in range(height):
         for x in range(width):
-            if not visited[y][x]:
+            if not visited[y][x] and color_array[y][x] is not None:  # ignore transparent pixels
                 color = color_array[y][x]
                 region = explore_region(x, y, color)
                 if region:
@@ -112,12 +119,28 @@ def draw_region_outlines(regions, output_path, pixel_size, unit, mode):
     if mode != "singles":
         doc.saveas(f"{output_path}.dxf")
 
+# check if a border should be drawn by comparing neighboring pixels
+def needs_border(rgb_array, x, y, dx, dy, color):
+    neighbor_x = x + dx
+    neighbor_y = y + dy
+    height = len(rgb_array)
+    width = len(rgb_array[0])
+
+    # check if out of bounds
+    if neighbor_x < 0 or neighbor_x >= width or neighbor_y < 0 or neighbor_y >= height:
+        return True  # needs border at the edge
+
+    neighbor_pixel = rgb_array[neighbor_y][neighbor_x]
+
+    # check if neighbor is transparent or a different color
+    return neighbor_pixel[3] == 0 or tuple(neighbor_pixel[:3]) != color
+
 # create single PNG images for every color
 def array_to_pngs(rgb_array, png_folder):
     width = len(rgb_array[0])
     height = len(rgb_array)
 
-    unique_colors = set(tuple(pixel) for row in rgb_array for pixel in row)
+    unique_colors = set(tuple(pixel[:3]) for row in rgb_array for pixel in row if pixel[3] > 0)
     
     for color in unique_colors:
         img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
@@ -126,12 +149,8 @@ def array_to_pngs(rgb_array, png_folder):
             for x in range(width):
                 current_color = rgb_array[y][x]
                 
-                # pixel in target color
-                if current_color == color:
-                    img.putpixel((x, y), current_color + (255,))
-                # transparent pixel
-                else:
-                    img.putpixel((x, y), (0, 0, 0, 0))
+                if current_color[3] > 0 and current_color[:3] == color:  # ignore transparent pixels
+                    img.putpixel((x, y), current_color)
         
         # output path
         hex_color = rgb_to_hex(color).lstrip('#')
@@ -149,8 +168,8 @@ def array_to_scaled_png(rgb_array, png_folder, pixel_size, unit, line_width, out
     img = Image.new("RGBA", (width * pixel_size_in_pixels, height * pixel_size_in_pixels), (255, 255, 255, 255))
     draw = ImageDraw.Draw(img)
 
-    # identify unique colors (ensure tuples are rgb, not rgba)
-    unique_colors = set(tuple(pixel[:3]) for row in rgb_array for pixel in row)
+    # identify unique colors (excluding transparent pixels)
+    unique_colors = set(tuple(pixel[:3]) for row in rgb_array for pixel in row if pixel[3] > 0)
 
     for color in unique_colors:
         region_pixels = set()
@@ -158,29 +177,46 @@ def array_to_scaled_png(rgb_array, png_folder, pixel_size, unit, line_width, out
         # find pixels belonging to current color
         for y in range(height):
             for x in range(width):
-                if tuple(rgb_array[y][x][:3]) == color:  # ignore alpha if present
+                if tuple(rgb_array[y][x][:3]) == color and rgb_array[y][x][3] > 0:  
+                    # ignore transparent pixels
                     region_pixels.add((x, y))
 
         for x, y in region_pixels:
             top_left = (x * pixel_size_in_pixels, y * pixel_size_in_pixels)
             bottom_right = ((x + 1) * pixel_size_in_pixels, (y + 1) * pixel_size_in_pixels)
 
-            # check borders and draw line if neighbour is different or out of bounds
+            # preserve transparent pixels
+            if rgb_array[y][x][3] == 0:
+                continue
+
+            # check borders and draw line if a neighbor is different or transparent
             # top
-            if y == 0 or tuple(rgb_array[y-1][x][:3]) != color:
-                draw.line([(top_left[0], top_left[1]), (bottom_right[0], top_left[1])], fill="black", width=line_width)
+            if needs_border(rgb_array, x, y, 0, -1, color):
+                draw.line(
+                    [(top_left[0], top_left[1]), (bottom_right[0], top_left[1])], 
+                    fill="black", width=line_width
+                )
 
             # bottom
-            if y == height - 1 or tuple(rgb_array[y+1][x][:3]) != color:
-                draw.line([(top_left[0], bottom_right[1]), (bottom_right[0], bottom_right[1])], fill="black", width=line_width)
+            if needs_border(rgb_array, x, y, 0, 1, color):
+                draw.line(
+                    [(top_left[0], bottom_right[1]), (bottom_right[0], bottom_right[1])], 
+                    fill="black", width=line_width
+                )
 
             # left
-            if x == 0 or tuple(rgb_array[y][x-1][:3]) != color:
-                draw.line([(top_left[0], top_left[1]), (top_left[0], bottom_right[1])], fill="black", width=line_width)
+            if needs_border(rgb_array, x, y, -1, 0, color):
+                draw.line(
+                    [(top_left[0], top_left[1]), (top_left[0], bottom_right[1])], 
+                    fill="black", width=line_width
+                )
 
             # right
-            if x == width - 1 or tuple(rgb_array[y][x+1][:3]) != color:  
-                draw.line([(bottom_right[0], top_left[1]), (bottom_right[0], bottom_right[1])], fill="black", width=line_width)
+            if needs_border(rgb_array, x, y, 1, 0, color):
+                draw.line(
+                    [(bottom_right[0], top_left[1]), (bottom_right[0], bottom_right[1])], 
+                    fill="black", width=line_width
+                )
 
     # output path
     output_image_path = os.path.join(png_folder, f"{output_name}_print.png")
