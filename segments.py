@@ -198,12 +198,16 @@ def main():
     parser.add_argument("-o", "--output", help="Output name (optional)")
     parser.add_argument("-s", "--size", type=float, default=5, help="Pixel size in DXF units (default: 5)")
     parser.add_argument("-u", "--unit", type=str, default="mm", choices=["mm", "inch"], help="Unit type for DXF (default: mm, options: mm | inch)")
+    parser.add_argument("-l", "--linewidth", type=int, default=2, help="Line width for printable PNG file in pixels (default: 2)")
 
     args = parser.parse_args()
 
     # pixel size and unit
     pixel_size = args.size
     unit = args.unit
+
+    # line width for printable PNG outlines
+    line_width = args.linewidth
 
     # input file
     input_image_path = args.input
@@ -241,6 +245,7 @@ def main():
     print(f"Input file: {input_image_path}")
     print(f"Pixel size: {pixel_size}")
     print(f"Unit: {unit}")
+    print(f"Line width: {line_width}px")
 
     # create arrays and regions
     color_array = create_color_array(input_image_path)
@@ -264,7 +269,7 @@ def main():
     draw_region_outlines(regions, singles_folder, pixel_size, 4 if unit == "mm" else 1, "singles")
 
     # printable black/white PNG file
-    array_to_scaled_png(color_array, png_folder, pixel_size, unit, 2, output_name)
+    array_to_scaled_png(color_array, png_folder, pixel_size, unit, line_width, output_name)
 
     # single color PNG files
     array_to_pngs(color_array, png_singles_folder)
