@@ -1,18 +1,25 @@
-from PIL import Image, ImageDraw
-from PIL.PngImagePlugin import PngInfo
+# builtin
 import os
 import shutil
-import ezdxf
 import argparse
+# pillow
+from PIL import Image, ImageDraw
+from PIL.PngImagePlugin import PngInfo
+# ezdxf
+import ezdxf
+# aci_table.py
 import aci_table as LUT
 
-def color_to_hex(color):
+# rgb to hex
+def rgb_to_hex(color):
     r, g, b = color
     return f"{r:02X}{g:02X}{b:02X}"
 
+# rgb array to hex array
 def convert_array_to_hex(rgb_array):
-    return [[color_to_hex(pixel) for pixel in row] for row in rgb_array]
+    return [[rgb_to_hex(pixel) for pixel in row] for row in rgb_array]
 
+# find closest matching ACI color (according to aci_table.py)
 def find_closest_aci(hex_color):
     r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:], 16)
     closest_color = min(
@@ -21,11 +28,13 @@ def find_closest_aci(hex_color):
     )
     return closest_color[0]
 
+# create rgb color array from image
 def create_color_array(input_path):
     img = Image.open(input_path).convert("RGB")
     width, height = img.size
     return [[img.getpixel((x, y)) for x in range(width)] for y in range(height)]
 
+# find connected regions of the same color
 def find_connected_regions(color_array):
     height, width = len(color_array), len(color_array[0])
     visited = [[False for _ in range(width)] for _ in range(height)]
@@ -54,6 +63,7 @@ def find_connected_regions(color_array):
 
     return regions
 
+# draw DXF outlines
 def draw_region_outlines(regions, output_path, pixel_size, unit, mode):
     doc = ezdxf.new()
     doc.header["$INSUNITS"] = unit
@@ -76,7 +86,7 @@ def draw_region_outlines(regions, output_path, pixel_size, unit, mode):
             single_doc.layers.add(name=layer_name, color=aci_color)
             msp = single_doc.modelspace()
 
-        # multi
+        # multi region
         else:
             if layer_name not in doc.layers:
                 doc.layers.add(name=layer_name, color=aci_color)
@@ -98,10 +108,11 @@ def draw_region_outlines(regions, output_path, pixel_size, unit, mode):
             if mode == "singles":
                 single_doc.saveas(os.path.join(output_path, f"HEX_{layer_name.lstrip('#')}.dxf"))
 
-    # multi
+    # multi region
     if mode != "singles":
         doc.saveas(f"{output_path}.dxf")
 
+# create single PNG images for every color
 def array_to_pngs(rgb_array, png_folder):
     width = len(rgb_array[0])
     height = len(rgb_array)
@@ -123,12 +134,13 @@ def array_to_pngs(rgb_array, png_folder):
                     img.putpixel((x, y), (0, 0, 0, 0))
         
         # output path
-        hex_color = color_to_hex(color).lstrip('#')
+        hex_color = rgb_to_hex(color).lstrip('#')
         output_image_path = os.path.join(png_folder, f"HEX_{hex_color}.png")
-        # save single png
+        # save single color PNG
         img.save(output_image_path)
 
-def array_to_scaled_png(rgb_array, png_folder, pixel_size, unit, line_width):
+# create printable black/white PNG containing all regions as outlines
+def array_to_scaled_png(rgb_array, png_folder, pixel_size, unit, line_width, output_name):
     # convert pixel size to pixels based on unit in 300 DPI
     pixel_size_in_pixels = int(pixel_size * 300 / (25.4 if unit == "mm" else 1))
 
@@ -137,7 +149,7 @@ def array_to_scaled_png(rgb_array, png_folder, pixel_size, unit, line_width):
     img = Image.new("RGBA", (width * pixel_size_in_pixels, height * pixel_size_in_pixels), (255, 255, 255, 255))
     draw = ImageDraw.Draw(img)
 
-    # identify unique colors (ensure tuples are RGB, not RGBA)
+    # identify unique colors (ensure tuples are rgb, not rgba)
     unique_colors = set(tuple(pixel[:3]) for row in rgb_array for pixel in row)
 
     for color in unique_colors:
@@ -146,7 +158,7 @@ def array_to_scaled_png(rgb_array, png_folder, pixel_size, unit, line_width):
         # find pixels belonging to current color
         for y in range(height):
             for x in range(width):
-                if tuple(rgb_array[y][x][:3]) == color:  # Ignore alpha if present
+                if tuple(rgb_array[y][x][:3]) == color:  # ignore alpha if present
                     region_pixels.add((x, y))
 
         for x, y in region_pixels:
@@ -171,15 +183,16 @@ def array_to_scaled_png(rgb_array, png_folder, pixel_size, unit, line_width):
                 draw.line([(bottom_right[0], top_left[1]), (bottom_right[0], bottom_right[1])], fill="black", width=line_width)
 
     # output path
-    output_image_path = os.path.join(png_folder, "all_regions_scaled.png")
+    output_image_path = os.path.join(png_folder, f"{output_name}_print.png")
     # ensure resolution
     metadata = PngInfo()
     metadata.add_text("dpi", "300")
     metadata.add_itxt("Resolution", "300 dpi")
-    # save png
+    # save PNG
     img.save(output_image_path, pnginfo=metadata, dpi=(300, 300))
 
 def main():
+    # arguments
     parser = argparse.ArgumentParser(description="Convert an image to a DXF file with pixel-based outlines.")
     parser.add_argument("-i", "--input", required=True, help="Input image file path (mandatory)")
     parser.add_argument("-o", "--output", help="Output name (optional)")
@@ -188,11 +201,9 @@ def main():
 
     args = parser.parse_args()
 
+    # pixel size and unit
     pixel_size = args.size
     unit = args.unit
-
-    # dxf output options
-    dxf_options = ["mono", "multi", "multi_colored"]
 
     # input file
     input_image_path = args.input
@@ -210,28 +221,36 @@ def main():
     # make folder 
     os.makedirs(output_folder, exist_ok=True)
 
-    # dxf folder
+    # DXF folder
     dxf_folder = os.path.join(output_folder, "DXF")
     os.makedirs(dxf_folder, exist_ok=True)
 
-    # single dxf files folder
+    # single DXF files folder
     singles_folder = os.path.join(dxf_folder, "Singles")
     os.makedirs(singles_folder, exist_ok=True)
 
-    # png folder
+    # PNG folder
     png_folder = os.path.join(output_folder, "PNG")
     os.makedirs(png_folder, exist_ok=True)
 
+    # single color PNG image folder
+    png_singles_folder = os.path.join(png_folder, "Single-Color")
+    os.makedirs(png_singles_folder, exist_ok=True)
+
+    # print info
     print(f"Input file: {input_image_path}")
     print(f"Pixel size: {pixel_size}")
-    print(f"Unit type: {unit}")
+    print(f"Unit: {unit}")
 
+    # create arrays and regions
     color_array = create_color_array(input_image_path)
-
     hex_array = convert_array_to_hex(color_array)
     regions = find_connected_regions(hex_array)
 
-    # multi layer dxf files
+    # DXF output options
+    dxf_options = ["mono", "multi", "multi_colored"]
+
+    # multi layer DXF files
     for option in dxf_options:
         draw_region_outlines(
             regions, 
@@ -241,14 +260,14 @@ def main():
             option
             )
         
-    # single layer dxf files
+    # single layer DXF files
     draw_region_outlines(regions, singles_folder, pixel_size, 4 if unit == "mm" else 1, "singles")
 
-    # png files
-    array_to_pngs(color_array, png_folder)
+    # printable black/white PNG file
+    array_to_scaled_png(color_array, png_folder, pixel_size, unit, 2, output_name)
 
-    # png file
-    array_to_scaled_png(color_array, png_folder, pixel_size, unit, 2)
+    # single color PNG files
+    array_to_pngs(color_array, png_singles_folder)
 
     print("Output folder created successfully:", output_folder)
 
