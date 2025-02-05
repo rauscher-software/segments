@@ -159,9 +159,9 @@ def array_to_pngs(rgb_array, png_folder):
         img.save(output_image_path)
 
 # create printable black/white PNG containing all regions as outlines
-def array_to_scaled_png(rgb_array, png_folder, pixel_size, unit, line_width, output_name):
-    # convert pixel size to pixels based on unit in 300 DPI
-    pixel_size_in_pixels = int(pixel_size * 300 / (25.4 if unit == "mm" else 1))
+def array_to_scaled_png(rgb_array, png_folder, pixel_size, unit, line_width, dpi, output_name):
+    # convert pixel size to pixels based on unit and dpi
+    pixel_size_in_pixels = int(pixel_size * dpi / (25.4 if unit == "mm" else 1))
 
     width, height = len(rgb_array[0]), len(rgb_array)
 
@@ -222,10 +222,10 @@ def array_to_scaled_png(rgb_array, png_folder, pixel_size, unit, line_width, out
     output_image_path = os.path.join(png_folder, f"{output_name}_print.png")
     # ensure resolution
     metadata = PngInfo()
-    metadata.add_text("dpi", "300")
-    metadata.add_itxt("Resolution", "300 dpi")
+    metadata.add_text("dpi", f"{dpi}")
+    metadata.add_itxt("Resolution", f"{dpi} dpi")
     # save PNG
-    img.save(output_image_path, pnginfo=metadata, dpi=(300, 300))
+    img.save(output_image_path, pnginfo=metadata, dpi=(dpi, dpi))
 
 def main():
     # arguments
@@ -235,6 +235,7 @@ def main():
     parser.add_argument("-s", "--size", type=float, default=5, help="Pixel size in DXF units (default: 5)")
     parser.add_argument("-u", "--unit", type=str, default="mm", choices=["mm", "inch"], help="Unit type for DXF (default: mm, options: mm | inch)")
     parser.add_argument("-l", "--linewidth", type=int, default=2, help="Line width for printable PNG file in pixels (default: 2)")
+    parser.add_argument("-d", "--dpi", type=int, default=300, help="DPI for printable PNG file (Default: 300)")
 
     args = parser.parse_args()
 
@@ -242,8 +243,9 @@ def main():
     pixel_size = args.size
     unit = args.unit
 
-    # line width for printable PNG outlines
+    # settings for printable PNG
     line_width = args.linewidth
+    dpi = args.dpi
 
     # input file
     input_image_path = args.input
@@ -309,7 +311,7 @@ def main():
     draw_region_outlines(regions, singles_folder, pixel_size, 4 if unit == "mm" else 1, "singles")
 
     # printable black/white PNG file
-    array_to_scaled_png(color_array, png_folder, pixel_size, unit, line_width, output_name)
+    array_to_scaled_png(color_array, png_folder, pixel_size, unit, line_width, dpi, output_name)
 
     # single color PNG files
     array_to_pngs(color_array, png_singles_folder)
