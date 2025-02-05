@@ -69,6 +69,11 @@ def find_connected_regions(color_array):
 
     return regions
 
+# remove "Defpoints" dxf layer
+def remove_defpoints(doc):
+    if "Defpoints" in doc.layers:
+        doc.layers.remove("Defpoints")
+
 # remove duplicate dxf lines
 def remove_duplicates(doc):
     msp = doc.modelspace()
@@ -84,6 +89,7 @@ def remove_duplicates(doc):
             unique_lines.add(line)
     
     clean_doc = ezdxf.new()
+    remove_defpoints(clean_doc)
     clean_msp = clean_doc.modelspace()
 
     for start, end in unique_lines:
@@ -96,9 +102,7 @@ def draw_region_outlines(regions, output_path, pixel_size, unit, mode):
     doc = ezdxf.new()
     doc.header["$INSUNITS"] = unit
 
-    # remove "Defpoints" layer
-    if "Defpoints" in doc.layers:
-        doc.layers.remove("Defpoints")
+    remove_defpoints(doc)
 
     for hex_color, color_regions in regions.items():
         aci_color = find_closest_aci(hex_color) if mode == "multi_colored" else 7
@@ -108,9 +112,8 @@ def draw_region_outlines(regions, output_path, pixel_size, unit, mode):
         if mode == "singles":
             single_doc = ezdxf.new()
             single_doc.header["$INSUNITS"] = unit
-            # remove "Defpoints" layer
-            if "Defpoints" in single_doc.layers:
-                single_doc.layers.remove("Defpoints")
+            remove_defpoints(doc)
+
             single_doc.layers.add(name=layer_name, color=aci_color)
             msp = single_doc.modelspace()
 
