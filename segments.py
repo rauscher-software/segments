@@ -25,7 +25,6 @@ def convert_array_to_hex(rgb_array):
         for row in rgb_array
     ]
 
-
 # find closest matching ACI color (according to aci_table.py)
 def find_closest_aci(hex_color):
     r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:], 16)
@@ -69,6 +68,28 @@ def find_connected_regions(color_array):
                     regions.setdefault(color, []).append(region)
 
     return regions
+
+# remove duplicate dxf lines
+def remove_duplicates(doc):
+    msp = doc.modelspace()
+    unique_lines = set()
+
+    for entity in msp:
+        if entity.dxftype() == 'LINE':
+            start = (entity.dxf.start.x, entity.dxf.start.y)
+            end = (entity.dxf.end.x, entity.dxf.end.y)
+            # sort tuple so that lines with mirrored start and end points are identical
+            line = tuple(sorted([start, end]))
+            # adding "lines" to unique_lines set removes duplicates automatically
+            unique_lines.add(line)
+    
+    clean_doc = ezdxf.new()
+    clean_msp = clean_doc.modelspace()
+
+    for start, end in unique_lines:
+        clean_msp.add_line(start, end)
+
+    return clean_doc
 
 # draw DXF outlines
 def draw_region_outlines(regions, output_path, pixel_size, unit, mode):
@@ -117,6 +138,9 @@ def draw_region_outlines(regions, output_path, pixel_size, unit, mode):
 
     # multi region
     if mode != "singles":
+        # if mode is mono outline dxf -> remove all duplicate lines
+        if mode == "mono":
+            doc = remove_duplicates(doc)
         doc.saveas(f"{output_path}.dxf")
 
 # check if a border should be drawn by comparing neighboring pixels
