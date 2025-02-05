@@ -69,13 +69,13 @@ def find_connected_regions(color_array):
 
     return regions
 
-# remove "Defpoints" dxf layer
+# remove "Defpoints" DXF layer
 def remove_defpoints(doc):
     if "Defpoints" in doc.layers:
         doc.layers.remove("Defpoints")
 
-# remove duplicate dxf lines
-def remove_duplicates(doc):
+# remove duplicate DXF lines
+def remove_duplicates(doc, unit):
     msp = doc.modelspace()
     unique_lines = set()
 
@@ -89,6 +89,7 @@ def remove_duplicates(doc):
             unique_lines.add(line)
     
     clean_doc = ezdxf.new()
+    clean_doc.header["$INSUNITS"] = unit
     remove_defpoints(clean_doc)
     clean_msp = clean_doc.modelspace()
 
@@ -141,9 +142,10 @@ def draw_region_outlines(regions, output_path, pixel_size, unit, mode):
 
     # multi region
     if mode != "singles":
-        # if mode is mono outline dxf -> remove all duplicate lines
+        # if mode is mono outline DXF -> remove all duplicate lines
         if mode == "mono":
-            doc = remove_duplicates(doc)
+            doc = remove_duplicates(doc, unit)
+        # save DXF
         doc.saveas(f"{output_path}.dxf")
 
 # check if a border should be drawn by comparing neighboring pixels
