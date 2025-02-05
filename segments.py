@@ -249,6 +249,10 @@ def main():
     input_image_path = args.input
     input_dir = os.path.dirname(input_image_path)
     input_name = os.path.splitext(os.path.basename(input_image_path))[0]
+
+    # check if input file exists
+    if not os.path.exists(input_image_path):
+        raise SystemExit(f"Error: The file {input_image_path} does not exist")
     
     # general output folder
     output_name = args.output if args.output else input_name
